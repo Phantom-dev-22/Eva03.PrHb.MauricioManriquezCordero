@@ -1,0 +1,33 @@
+
+--REQUERIMIENTO 2 
+
+CREATE OR REPLACE FUNCTION CALCULA_COMISION(p_rut_empleado IN NUMBER) 
+RETURN NUMBER
+IS
+    v_monto_total NUMBER(10);  -- Variable para almacenar el total de ventas del empleado
+    v_comision NUMBER(10);      -- Variable para almacenar la comisión calculada
+BEGIN
+    -- Calculamos el total de las facturas del empleado
+    SELECT NVL(SUM(monto_total), 0)
+    INTO v_monto_total
+    FROM FACTURA
+    WHERE rut_empleado = p_rut_empleado;
+
+    -- Si hay ventas, calculamos la comisión; de lo contrario, la comisión es 0
+    IF v_monto_total > 0 THEN
+        v_comision := v_monto_total * 0.183;  -- 18.3% de comisión
+    ELSE
+        v_comision := 0;  -- Si no tiene ventas, la comisión es 0
+    END IF;
+
+    -- Retornamos el valor de la comisión calculada
+    RETURN v_comision;
+EXCEPTION
+    WHEN OTHERS THEN
+        -- Manejo de errores
+        RETURN 0;  -- Retorna 0 en caso de error
+END CALCULA_COMISION;
+
+
+--CONSULTA PARA MOSTRAR LA FUNCION
+SELECT rut_empleado, CALCULA_COMISION(rut_empleado) AS comision FROM EMPLEADO;

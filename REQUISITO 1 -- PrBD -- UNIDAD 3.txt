@@ -1,0 +1,81 @@
+--REQUERIMIENTO 1
+
+--HABILITACION MENSAJES
+SET SERVEROUTPUT ON;
+
+--PROCESO DE INGRESO -- PRIMER PASO 
+CREATE OR REPLACE PROCEDURE SP_FACTURAS_CLIENTE(
+    p_id_cliente OUT NUMBER,
+    p_nro_factura IN NUMBER,
+    p_peso_factura OUT NUMBER
+) IS
+BEGIN
+    -- Seleccionar el cliente y calcular el peso acumulado
+    SELECT id_cliente, ROUND(monto_total * 0.125) -- 12.5% de la compra, redondeado
+    INTO p_id_cliente, p_peso_factura
+    FROM FACTURA
+    WHERE nro_factura = p_nro_factura;
+    
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            -- Si no se encuentra la factura, se maneja el error
+            DBMS_OUTPUT.PUT_LINE('No se encontró la factura con el número ' || p_nro_factura);
+        WHEN OTHERS THEN
+            -- Captura cualquier otro tipo de error
+            DBMS_OUTPUT.PUT_LINE('Error inesperado: ' || SQLERRM);
+END SP_FACTURAS_CLIENTE;
+/
+
+
+--PROCESO DE SALIDA -- SEGUNDO PASO
+CREATE OR REPLACE PROCEDURE SP_SALIDA IS
+    -- DEFINICION DE CURSOR PARA FACTURAS 
+    CURSOR cur_factura IS
+        SELECT nro_factura
+        FROM FACTURA;
+        
+    -- ALMACENAMIENTO RESULTADOS
+    v_id_cliente FACTURA.ID_CLIENTE%TYPE;
+    v_peso_factura NUMBER(7) := 0;
+BEGIN
+    
+    FOR reg_factura IN cur_factura LOOP
+        
+        SP_FACTURAS_CLIENTE(v_id_cliente, reg_factura.nro_factura, v_peso_factura);
+        
+        INSERT INTO DETALLE_PESOS_COMPRAS (ID_CLIENTE, NRO_FACTURA, PESOS_FACTURA)
+        VALUES (v_id_cliente, reg_factura.nro_factura, v_peso_factura);
+    END LOOP;
+
+    
+    FOR reg_cliente IN (SELECT id_cliente FROM CLIENTE) LOOP
+        
+        MERGE INTO TOTAL_PESOS_COMPRAS tpc
+        USING (SELECT id_cliente, SUM(pesos_factura) AS total_pesos
+               FROM DETALLE_PESOS_COMPRAS
+               WHERE id_cliente = reg_cliente.id_cliente
+               GROUP BY id_cliente) src
+        ON (tpc.id_cliente = src.id_cliente)
+        WHEN MATCHED THEN
+            UPDATE SET tpc.total_pesos = src.total_pesos
+        WHEN NOT MATCHED THEN
+            INSERT (id_cliente, total_pesos)
+            VALUES (src.id_cliente, src.total_pesos);
+    END LOOP;
+
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        DBMS_OUTPUT.PUT_LINE('No se encontraron datos para procesar.');
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Error inesperado: ' || SQLERRM);
+END SP_SALIDA;
+/
+
+--EJECUCION PROCEDIMIENTO DE SALIDA
+BEGIN
+    SP_SALIDA;
+END;
+
+-- CONSULTA DE TABLAS
+SELECT * FROM DETALLE_PESOS_COMPRAS ORDER BY PESOS_FACTURA ASC;
+SELECT * FROM TOTAL_PESOS_COMPRAS;
